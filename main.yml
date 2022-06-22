@@ -1,0 +1,111 @@
+---
+- hosts: localhost
+  gather_facts: false
+  connection: local
+  tasks:
+  # Get existing projects
+  - name: Get existing Azure DevOps projects
+    uri:
+      method: GET
+      url: https://dev.azure.com/{{azure_devops_organisation}}/_apis/projects?api-version=5.1
+      user: git
+      password: "{{ azure_devops_api_token }}"
+      force_basic_auth: yes
+    register: projects
+
+  - set_fact:
+      existing_projects: "{{ projects.json.value | map(attribute='name') | list }}"
+
+  - name: verbose - Show API response to list existing Azure DevOps projects
+    debug:
+      var: projects
+      verbosity: 1
+
+  - name: Show existing Azure DevOps projects
+    debug:
+      var: existing_projects
+
+  # Create the project
+  - name: Create Azure DevOps project
+    uri:
+      method: POST
+      url: https://dev.azure.com/{{azure_devops_organisation}}/_apis/projects?api-version=6.0
+      user: git
+      password: "{{ azure_devops_api_token }}"
+      force_basic_auth: yes
+      #accept status code 202: The request has been accepted for processing, but the processing has not been completed
+      status_code: 202
+      body_format: json
+      body:
+        name: "{{ azure_devops_project_name }}"
+        description: "{{ azure_devops_project_description }}"
+        visibility: private
+        capabilities:
+          versioncontrol:
+            sourceControlType: git
+          processTemplate:
+            templateTypeId: 6b724908-ef14-45cf-84f8-768b5384da45
+    register: create_project
+    when: azure_devops_project_name not in existing_projects
+
+  - name: verbose - Show API response to create Azure DevOps project
+    debug:
+      var: create_project
+      verbosity: 1
+
+  - name: Pause to allow time for project creation
+    pause:
+      seconds: 10
+    when: azure_devops_project_name not in existing_projects
+
+  # Set default security groups memberships
+  - name: Get security groups in the Azure DevOps organisation
+    uri:
+      method: GET
+      url: https://vssps.dev.azure.com/{{azure_devops_organisation}}/_apis/graph/groups?api-version=6.0-preview.1
+      user: git
+      password: "{{ azure_devops_api_token }}"
+      force_basic_auth: yes
+    register: security_groups
+
+  - name: JSON query for group IDs from API response
+    set_fact: 'group_id="{{ group_id + security_groups.json.value | json_query(jmesquery) }}"'
+    vars:
+      group_id: []
+      jmesquery: "[? displayName=='{{ item }}'].descriptor"
+    loop: "{{ azure_devops_groups }}"
+
+  - name: verbose - Show group IDs parsed from JSON query
+    debug:
+      var: group_id
+      verbosity: 1
+
+  - name: JSON query for project administrator group of the new project
+    set_fact: 'project_admin_group_id="{{ security_groups.json.value | json_query(jmesquery) }}"'
+    vars:
+      jmesquery: "[? principalName=='[{{ azure_devops_project_name }}]\\Project Administrators'].descriptor"
+    when: azure_devops_project_name not in existing_projects
+
+  - name: verbose - Show project admin group ID parsed from JSON query
+    debug:
+      var: project_admin_group_id
+      verbosity: 1
+
+  - name: Add ROLE groups to Azure DevOps Project Administrators group
+    uri:
+      method: PUT
+      url: https://vssps.dev.azure.com/{{azure_devops_organisation}}/_apis/graph/memberships/{{ item }}/{{ project_admin_group_id[0] }}?api-version=7.1-preview.1
+      user: git
+      password: "{{ azure_devops_api_token }}"
+      force_basic_auth: yes
+      status_code: 201
+    register: role_assignment
+    loop: "{{ group_id | list }}"
+    when: azure_devops_project_name not in existing_projects
+
+#Optionally create default_vars variable group
+  - name: create default_vars variable group
+    ansible.builtin.command: az pipelines variable-group create --org https://dev.azure.com/{{azure_devops_organisation}} --project {{ azure_devops_project_name }} --name default_vars --variables ARM_TENANT_ID={{ vargroup_default_vars.ARM_TENANT_ID }} role_id={{ vargroup_default_vars.role_id }} secret_id={{ vargroup_default_vars.secret_id }} subscription={{ vargroup_default_vars.subscription }} VAULT_ADDR={{ vargroup_default_vars.VAULT_ADDR }}
+    environment:
+      AZURE_DEVOPS_EXT_PAT: "{{ azure_devops_api_token }}"
+    when: vargroup_default_vars is defined

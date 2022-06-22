@@ -1,0 +1,15 @@
+---
+azure_devops_api_token: aaaaaaaaaaaaaaaaaaaaa0000000000000000000
+
+azure_devops_organisation: example-org
+azure_devops_project_name: test-project
+azure_devops_project_description: testing123
+
+azure_devops_groups:
+- example-role-1
+- example-role-2
+
+#Optional
+#vargroup_default_vars:
+#  var1: somevalue
+#  var2: anothervalue
