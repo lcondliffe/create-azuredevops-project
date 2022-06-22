@@ -102,10 +102,3 @@
     register: role_assignment
     loop: "{{ group_id | list }}"
     when: azure_devops_project_name not in existing_projects
-
-#Optionally create default_vars variable group
-  - name: create default_vars variable group
-    ansible.builtin.command: az pipelines variable-group create --org https://dev.azure.com/{{azure_devops_organisation}} --project {{ azure_devops_project_name }} --name default_vars --variables ARM_TENANT_ID={{ vargroup_default_vars.ARM_TENANT_ID }} role_id={{ vargroup_default_vars.role_id }} secret_id={{ vargroup_default_vars.secret_id }} subscription={{ vargroup_default_vars.subscription }} VAULT_ADDR={{ vargroup_default_vars.VAULT_ADDR }}
-    environment:
-      AZURE_DEVOPS_EXT_PAT: "{{ azure_devops_api_token }}"
-    when: vargroup_default_vars is defined

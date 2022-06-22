@@ -8,8 +8,3 @@ azure_devops_project_description: testing123
 azure_devops_groups:
 - example-role-1
 - example-role-2
-
-#Optional
-#vargroup_default_vars:
-#  var1: somevalue
-#  var2: anothervalue
